@@ -122,6 +122,7 @@ def plot_samples(dataloader, n_rows: int):
             if j == n_features - 1:
                 plt.imshow(inputs[i, -2, :, :], cmap=CMAP, norm=NORM)
             if j == n_features:
+                print(inputs[i, -1, :, :])
                 plt.imshow(inputs[i, -1, :, :], cmap=CMAP, norm=NORM) 
             plt.axis('off')
     plt.tight_layout()
