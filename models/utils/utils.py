@@ -74,8 +74,7 @@ class CustomDataset(Dataset):
             population,
             erc,
             prev_fire_mask,
-            fire_mask,
-        ], dim=0)
+        ], dim=0), fire_mask
 
 def generate_dataloader(tfrecord_type, batch_size):
     tfrecord_paths = _generate_tfrecords(tfrecord_type)
@@ -90,7 +89,7 @@ def _generate_tfrecords(type):
     path = os.path.realpath(os.path.join(dir_path, "../../data"))
     tfrecord_paths = []
     if type == 'train':
-        tfrecord_paths = [os.path.join(path, f"next_day_wildfire_spread_train_{i:02d}.tfrecord") for i in range(15)]
+        tfrecord_paths = [os.path.join(path, f"next_day_wildfire_spread_train_{i:02d}.tfrecord") for i in range(1)]
     elif type == 'eval':
         tfrecord_paths = [os.path.join(path, f"next_day_wildfire_spread_eval_{i:02d}.tfrecord") for i in range(2)]
     elif type == 'test':
@@ -106,9 +105,9 @@ def plot_samples(dataloader, n_rows: int):
     BOUNDS = [-1, -0.1, 0.001, 1]
     NORM = colors.BoundaryNorm(BOUNDS, CMAP.N)
 
-    inputs = None
+    inputs, labels = None, None
     for elem in dataloader:
-        inputs = elem
+        inputs, labels = elem
         break
 
     n_features = 12
@@ -120,13 +119,71 @@ def plot_samples(dataloader, n_rows: int):
             if j < n_features - 1:
                 plt.imshow(inputs[i, j, :, :], cmap='viridis')
             if j == n_features - 1:
-                plt.imshow(inputs[i, -2, :, :], cmap=CMAP, norm=NORM)
+                plt.imshow(inputs[i, -1, :, :], cmap=CMAP, norm=NORM)
             if j == n_features:
-                print(inputs[i, -1, :, :])
-                plt.imshow(inputs[i, -1, :, :], cmap=CMAP, norm=NORM) 
+                plt.imshow(labels[i, :, :], cmap=CMAP, norm=NORM) 
             plt.axis('off')
     plt.tight_layout()
     plt.show()
+
+def graph_losses(losses, losses_dice, losses_wbce, validation_losses, subset_size=1000):
+    if len(losses) > subset_size:
+        indices = np.linspace(0, len(losses) - 1, subset_size).astype(int)
+        losses = np.array(losses)[indices]
+        losses_dice = np.array(losses_dice)[indices]
+        losses_wbce = np.array(losses_wbce)[indices]
+    
+    val_indices = np.linspace(0, len(losses) - 1, len(validation_losses)).astype(int)
+
+    plt.figure(figsize=(14, 8))
+    
+    # Plot training losses
+    plt.plot(losses, label='Training Loss')
+    plt.plot(losses_dice, label='Dice Loss')
+    plt.plot(losses_wbce, label='WBCE Loss')
+    
+    # Plot validation losses on the same graph
+    plt.plot(val_indices, validation_losses, label='Validation Loss', marker='o')
+    
+    plt.title('Training and Validation Losses')
+    plt.xlabel('Training Samples / Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    
+    plt.show()
+    
+    '''if len(losses) > subset_size:
+        indices = np.linspace(0, len(losses) - 1, subset_size).astype(int)
+        losses = np.array(losses)[indices]
+        losses_dice = np.array(losses_dice)[indices]
+        losses_wbce = np.array(losses_wbce)[indices]
+    
+    epochs = range(1, len(validation_losses) + 1)
+    
+    plt.figure(figsize=(14, 8))
+    
+    # Plot training losses
+    plt.subplot(2, 1, 1)
+    plt.plot(losses, label='Training Loss')
+    plt.plot(losses_dice, label='Dice Loss')
+    plt.plot(losses_wbce, label='WBCE Loss')
+    plt.title('Training Losses')
+    plt.xlabel('Training Samples')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot validation losses
+    plt.subplot(2, 1, 2)
+    plt.plot(epochs, validation_losses, label='Validation Loss', marker='o')
+    plt.title('Validation Losses')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.show()'''
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

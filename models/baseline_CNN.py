@@ -2,67 +2,89 @@ import os
 import torch
 import argparse
 import numpy as np
-from torch import nn
+import torch.nn as nn
+import torchvision.models as models
 
-from utils.utils import generate_dataloader
-from utils.model_utils import loss
+from utils.model_utils import train, test
 
-'''def conv_net(nn.Module):
-    def __init__(self):
-        super(conv_net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1)
-        self.fc1 = nn.Linear(64*14*14, 128)
-        self.fc2 = nn.Linear(128, 10)
+class upsample_block(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(upsample_block, self).__init__()
+        self.upsample = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=2, padding=1, output_padding=1)
+        self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = x.view(-1, 64*14*14)
-        x = self.fc1(x)
-        x = self.fc2(x)
+        x = self.upsample(x)
+        x = self.relu(x)
         return x
-    
-def train(model, train_data, epochs=10):
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-    for epoch in range(epochs):
-        for i, data in enumerate(train_data):
-            inputs, labels = data
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            print(f"Epoch {epoch}, Batch {i}, Loss {loss.item()}")
-    print('Finished Training')'''
 
+class conv_net(nn.Module):
+    def __init__(self):
+        super(conv_net, self).__init__()
+        self.encoder = models.mobilenet_v2(pretrained=False).features
+        
+        self.encoder[0][0] = nn.Conv2d(12, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+
+        self.layer_names = [
+            '0',    # 32x32
+            '3',    # 16x16
+            '6',    # 8x8
+            '13',   # 4x4
+            '18',   # 2x2
+        ]
+        
+        self.upsample1 = upsample_block(1280, 512, 3)
+        self.upsample2 = upsample_block(608, 256, 3)
+        self.upsample3 = upsample_block(288, 128, 3)
+        self.upsample4 = upsample_block(152, 64, 3)
+        self.upsample5 = upsample_block(96, 32, 3)
+        
+        self.final_conv = nn.ConvTranspose2d(32, 32, kernel_size=3, stride=1, padding=1)
+        self.output_conv = nn.Conv2d(32, 1, kernel_size=1, padding=0)
+        self.sigmoid = nn.Sigmoid()
+        
+    def forward(self, x):
+        x_iter = x
+        # Encoding
+        features = []
+        for name, layer in self.encoder._modules.items():
+            x_iter = layer(x_iter)
+            if name in self.layer_names:
+                features.append(x_iter)
+        
+        # Decoding
+        x_iter = features[-1]
+        features = features[:-1][::-1]
+
+        x_iter = self.upsample1(x_iter)
+        x_iter = torch.cat([x_iter, features[0]], dim=1)
+        
+        x_iter = self.upsample2(x_iter)
+        x_iter = torch.cat([x_iter, features[1]], dim=1)
+
+        x_iter = self.upsample3(x_iter)
+        x_iter = torch.cat([x_iter, features[2]], dim=1)
+
+        x_iter = self.upsample4(x_iter)
+        x_iter = torch.cat([x_iter, features[3]], dim=1)
+        
+        x_iter = self.upsample5(x_iter)
+
+        x_iter = self.final_conv(x_iter)
+        x_iter = self.output_conv(x_iter)
+        x_iter = x_iter.squeeze()
+        x_iter = self.sigmoid(x_iter)
+        print(x_iter)
+        
+        return x_iter
+ 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--type", default='train')
+    parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--batch_size", type=int, default=32)
     args = parser.parse_args()
 
-    train_data = generate_dataloader('eval', args.batch_size)
-
-    total_pixels = 0
-    total_nodata = 0
-    total_nofire = 0
-    total_fire = 0
-    for train in train_data:
-        seg_mask_prev = train[:, -2, :, :]
-        seg_mask_gold = train[:, -1, :, :]
-
-        total_pixels += np.prod(seg_mask_prev.shape) + np.prod(seg_mask_gold.shape)
-        total_nodata += np.sum(seg_mask_prev.numpy() == -1) + np.sum(seg_mask_gold.numpy() == -1)
-        total_nofire += np.sum(seg_mask_prev.numpy() == 0) + np.sum(seg_mask_gold.numpy() == 0)
-        total_fire += np.sum(seg_mask_prev.numpy() == 1) + np.sum(seg_mask_gold.numpy() == 1)
-        
-    print(f"Total Pixels: {total_pixels}")
-    print(f"Total No Data: {total_nodata}")
-    print(f"Total No Data: {100 * total_nodata/total_pixels}")
-    print(f"Total No Fire: {total_nofire}")
-    print(f"Total No Fire: {100 * total_nofire/total_pixels}")
-    print(f"Total Fire: {total_fire}")
-    print(f"Total Fire: {100 * total_fire/total_pixels}")
+    model = conv_net()
+    train_losses, val_losses = train(model, args.batch_size, args.epochs)
+    test(model, args.batch_size)
     
