@@ -6,7 +6,7 @@ from .utils import generate_dataloader, graph_losses
 # ---------------------- Loss Functions ----------------------
 def dice_loss(gold_mask, pred_mask, smooth=1e-6):
     # Convert pred_mask to binary
-    pred_mask_binary = (pred_mask > 0.5).int()
+    pred_mask_binary = (pred_mask > 0.).int()
 
     mask = gold_mask != -1
 
@@ -16,7 +16,7 @@ def dice_loss(gold_mask, pred_mask, smooth=1e-6):
     intersection = (gold_mask_masked * pred_mask_masked).sum()
     union = gold_mask_masked.sum() + pred_mask_masked.sum()
 
-    return 1 - ((2.0 * intersection + smooth) / union)
+    return 1 - ((2.0 * intersection + smooth) / (union + smooth))
 
 def WBCE(gold_mask, pred_mask, w0=1, w1=100):
     mask = gold_mask != -1
@@ -25,7 +25,9 @@ def WBCE(gold_mask, pred_mask, w0=1, w1=100):
     pred_mask_masked = pred_mask[mask].float()
 
     weights = gold_mask_masked * w1 + (1 - gold_mask_masked) * w0
-    return torch.nn.functional.binary_cross_entropy_with_logits(pred_mask_masked, gold_mask_masked, weights, reduction='mean')
+    criterion = torch.nn.BCEWithLogitsLoss(weight=weights, reduction='mean')
+    return criterion(pred_mask_masked, gold_mask_masked)
+    #return torch.nn.functional.binary_cross_entropy_with_logits(pred_mask_masked, gold_mask_masked, weights, reduction='mean')
 
 # Pred mask is the predicted fire segmentation mask with probability scores that it is fire (class 1)
 # Gold mask is the ground truth fire segmentation mask with values -1 (no data), 0 (no fire), 1 (fire) 
@@ -34,7 +36,7 @@ def loss(gold_mask, pred_mask):
 
 # ---------------------- Evaluation Functions ----------------------
 def mean_iou(gold_mask, pred_mask):
-    pred_mask_binary = (pred_mask > 0.5).int()
+    pred_mask_binary = (pred_mask > 0.).int()
 
     mask = gold_mask != -1
 
@@ -55,7 +57,7 @@ def mean_iou(gold_mask, pred_mask):
     return ((intersection / union) + (intersection_0 / union_0)) / 2
 
 def accuracy(gold_mask, pred_mask):
-    pred_mask_binary = (pred_mask > 0.5).int()
+    pred_mask_binary = (pred_mask > 0.).int()
 
     mask = gold_mask != -1
 
@@ -77,7 +79,7 @@ def distance(gold_mask, pred_mask):
     mask = gold_mask != -1
 
     gold_mask_masked = gold_mask[mask].float()
-    pred_mask_masked = pred_mask[mask].float()
+    pred_mask_masked = torch.sigmoid(pred_mask[mask].float()) # Clamp values between 0 and 1
 
     return torch.linalg.norm(gold_mask_masked - pred_mask_masked)
 
@@ -96,11 +98,11 @@ def evaluate_model(model, val_data):
         dists.append(distance(masks, predictions))
     return torch.tensor(iou).mean(), torch.tensor(accs).mean(), torch.tensor(dists).mean(), torch.tensor(losses).mean()
 
-def train(model, batch_size, epochs):
+def train(model, name, lr, batch_size, epochs):
     train_data = generate_dataloader('train', batch_size)
     val_data = generate_dataloader('eval', batch_size)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
     epoch_losses = []
     validation_losses = []
     best_iou = 0
@@ -141,7 +143,7 @@ def train(model, batch_size, epochs):
 
         if iou_val > best_iou:
             best_iou = iou_val
-            torch.save(model.state_dict(), "best_baseline.pth")
+            torch.save(model.state_dict(), 'best_' + name + ".pth")
         
         epoch_losses.append(np.mean(losses))
         print(f'Epoch: {epoch}, Train loss: {epoch_losses[-1]}, Validation loss: {validation_loss}')

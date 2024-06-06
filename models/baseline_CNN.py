@@ -51,7 +51,7 @@ class conv_net(nn.Module):
             x_iter = layer(x_iter)
             if name in self.layer_names:
                 features.append(x_iter)
-        
+                
         # Decoding
         x_iter = features[-1]
         features = features[:-1][::-1]
@@ -59,32 +59,43 @@ class conv_net(nn.Module):
         x_iter = self.upsample1(x_iter)
         x_iter = torch.cat([x_iter, features[0]], dim=1)
         
+        print("added layer: ", x_iter.shape)
+
         x_iter = self.upsample2(x_iter)
         x_iter = torch.cat([x_iter, features[1]], dim=1)
+
+        print("added layer: ", x_iter.shape)
 
         x_iter = self.upsample3(x_iter)
         x_iter = torch.cat([x_iter, features[2]], dim=1)
 
+        print("added layer: ", x_iter.shape)
+
         x_iter = self.upsample4(x_iter)
         x_iter = torch.cat([x_iter, features[3]], dim=1)
+
+        print("added layer: ", x_iter.shape)
         
         x_iter = self.upsample5(x_iter)
+
+        print("added layer: ", x_iter.shape)
 
         x_iter = self.final_conv(x_iter)
         x_iter = self.output_conv(x_iter)
         x_iter = x_iter.squeeze()
-        x_iter = self.sigmoid(x_iter)
-        print(x_iter)
+
+        t = self.d(5)
         
         return x_iter
  
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=15)
+    parser.add_argument("--lr", default=1e-3, type=float)
     parser.add_argument("--batch_size", type=int, default=32)
     args = parser.parse_args()
 
     model = conv_net()
-    train_losses, val_losses = train(model, args.batch_size, args.epochs)
+    train_losses, val_losses = train(model, 'baseline', args.lr, args.batch_size, args.epochs)
     test(model, args.batch_size)
     
