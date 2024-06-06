@@ -58,33 +58,21 @@ class conv_net(nn.Module):
 
         x_iter = self.upsample1(x_iter)
         x_iter = torch.cat([x_iter, features[0]], dim=1)
-        
-        print("added layer: ", x_iter.shape)
 
         x_iter = self.upsample2(x_iter)
         x_iter = torch.cat([x_iter, features[1]], dim=1)
 
-        print("added layer: ", x_iter.shape)
-
         x_iter = self.upsample3(x_iter)
         x_iter = torch.cat([x_iter, features[2]], dim=1)
 
-        print("added layer: ", x_iter.shape)
-
         x_iter = self.upsample4(x_iter)
         x_iter = torch.cat([x_iter, features[3]], dim=1)
-
-        print("added layer: ", x_iter.shape)
         
         x_iter = self.upsample5(x_iter)
-
-        print("added layer: ", x_iter.shape)
 
         x_iter = self.final_conv(x_iter)
         x_iter = self.output_conv(x_iter)
         x_iter = x_iter.squeeze()
-
-        t = self.d(5)
         
         return x_iter
  
